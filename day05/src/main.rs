@@ -123,39 +123,40 @@ fn convert_by_rules(rules: &Vec<(i64, i64, i64)>, id: i64) -> i64 {
 fn convert_range_by_rules(rules: &Vec<(i64, i64, i64)>, mut range: (i64, i64)) -> Vec<(i64, i64)> {
     let mut result = vec![];
 
-    for rule in rules {
-        if range.0 > rule.1 + rule.2 - 1 {
+    for (rule_destination, rule_start, rule_len) in rules {
+        let (mut range_start, mut range_len) = range.clone();
+
+        if range_start > *rule_start + *rule_len - 1 {
             // range starts after the rule, continue to the next one
             continue;
         }
 
-        if range.0 + range.1 - 1 < rule.1 {
+        if range_start + range_len - 1 < *rule_start {
             // range ends before the rule, we are done
-
             result.push(range);
             return result;
         }
 
         // ranges intersect, split
-        if range.0 < rule.1 {
-            let distance = rule.1 - range.0;
-            result.push((range.0, distance));
-            range = (rule.1, range.1 - distance);
+        if range_start < *rule_start {
+            let distance = *rule_start - range_start;
+            result.push((range_start, distance));
+            (range_start, range_len) = (*rule_start, range_len - distance);
         }
 
-        if range.0 + range.1 <= rule.1 + rule.2 {
-            let distance = range.0 - rule.1;
-            let converted = (rule.0 + distance, range.1);
+        if range_start + range_len <= *rule_start + *rule_len {
+            let distance = range_start - *rule_start;
+            let converted = (*rule_destination + distance, range_len);
 
             result.push(converted);
             return result;
         }
 
-        let distance = range.0 - rule.1;
-        let converted = (rule.0 + distance, rule.2 - distance);
+        let distance = range_start - *rule_start;
+        let converted = (*rule_destination + distance, *rule_len - distance);
         result.push(converted);
 
-        range = (rule.1 + rule.2, range.1 - (rule.2 - distance));
+        range = (*rule_start + *rule_len, range_len - (*rule_len - distance));
     }
 
     result.push(range);
