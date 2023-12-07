@@ -40,7 +40,8 @@ impl Hand {
 
 const CARDS: [char; 13] = [
     // 'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
-    '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A',
+    // '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A',
+    'J', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'Q', 'K', 'A',
 ];
 
 impl HandType {
@@ -61,16 +62,36 @@ impl HandType {
 
         println!("{groups:?}");
 
-        match groups[..] {
-            [(k, 5)] => HandType::FiveOfAKind,
-            [(k1, 4), (k2, 1)] => HandType::FourOfAKind,
-            [(k1, 3), (k2, 2)] => HandType::FullHouse,
-            [(k1, 3), (k2, 1), (k3, 1)] => HandType::ThreeOfAKind,
-            [(k1, 2), (k2, 2), (k3, 1)] => HandType::TwoPairs,
-            [(k1, 2), (k2, 1), (k3, 1), (k4, 1)] => HandType::OnePair,
-            [(k1, 1), (k2, 1), (k3, 1), (k4, 1), (k5, 1)] => HandType::HighCard,
+        let hand_type = match groups[..] {
+            [(_, 5)] => HandType::FiveOfAKind,
+            [(_, 4), (_, 1)] => HandType::FourOfAKind,
+            [(_, 3), (_, 2)] => HandType::FullHouse,
+            [(_, 3), (_, 1), (_, 1)] => HandType::ThreeOfAKind,
+            [(_, 2), (_, 2), (_, 1)] => HandType::TwoPairs,
+            [(_, 2), (_, 1), (_, 1), (_, 1)] => HandType::OnePair,
+            [(_, 1), (_, 1), (_, 1), (_, 1), (_, 1)] => HandType::HighCard,
             _ => panic!(),
+        };
+
+        if let Some((_, joker_count)) = groups.iter().find(|e| *e.0 == 0) {
+            return match (hand_type, joker_count) {
+                (HandType::FiveOfAKind, 5) => HandType::FiveOfAKind,
+                (HandType::FourOfAKind, 4) => HandType::FiveOfAKind,
+                (HandType::FourOfAKind, 1) => HandType::FiveOfAKind,
+                (HandType::FullHouse, 3) => HandType::FiveOfAKind,
+                (HandType::FullHouse, 2) => HandType::FiveOfAKind,
+                (HandType::ThreeOfAKind, 3) => HandType::FourOfAKind,
+                (HandType::ThreeOfAKind, 1) => HandType::FourOfAKind,
+                (HandType::TwoPairs, 2) => HandType::FourOfAKind,
+                (HandType::TwoPairs, 1) => HandType::FullHouse,
+                (HandType::OnePair, 2) => HandType::ThreeOfAKind,
+                (HandType::OnePair, 1) => HandType::ThreeOfAKind,
+                (HandType::HighCard, 1) => HandType::OnePair,
+                _ => panic!(),
+            };
         }
+
+        hand_type
     }
 }
 
