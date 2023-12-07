@@ -2,15 +2,40 @@ use std::{cmp::Ordering, env, fs, vec};
 
 use itertools::Itertools;
 
+#[derive(Debug, Clone)]
+struct Hand {
+    hand_type: HandType,
+    cards: Vec<usize>,
+}
+
 #[derive(Debug, Copy, Clone)]
 enum HandType {
-    FiveOfAKind(usize),
-    FourOfAKind(usize, usize),
-    FullHouse(usize, usize),
-    ThreeOfAKind(usize, usize, usize),
-    TwoPairs(usize, usize, usize),
-    OnePair(usize, usize, usize, usize),
-    HighCard(usize, usize, usize, usize, usize),
+    FiveOfAKind,
+    FourOfAKind,
+    FullHouse,
+    ThreeOfAKind,
+    TwoPairs,
+    OnePair,
+    HighCard,
+}
+
+impl Hand {
+    fn new(cards: &str) -> Self {
+        let converted_cards = cards
+            .chars()
+            .map(|e| {
+                CARDS
+                    .iter()
+                    .position(|c| *c == e)
+                    .expect(&format!("Unexpected card {e}"))
+            })
+            .collect();
+
+        Self {
+            hand_type: HandType::new(&converted_cards),
+            cards: converted_cards,
+        }
+    }
 }
 
 const CARDS: [char; 13] = [
@@ -19,17 +44,9 @@ const CARDS: [char; 13] = [
 ];
 
 impl HandType {
-    fn new(cards: &str) -> Self {
-        println!("{cards}");
-
-        let temp = cards.chars().map(|e| {
-            CARDS
-                .iter()
-                .position(|c| *c == e)
-                .expect(&format!("Unexpected card {e}"))
-        });
-
-        let mut groups: Vec<_> = temp
+    fn new(cards: &Vec<usize>) -> Self {
+        let mut groups: Vec<_> = cards
+            .iter()
             .sorted()
             .group_by(|e| e.clone())
             .into_iter()
@@ -45,90 +62,72 @@ impl HandType {
         println!("{groups:?}");
 
         match groups[..] {
-            [(k, 5)] => HandType::FiveOfAKind(k),
-            [(k1, 4), (k2, 1)] => HandType::FourOfAKind(k1, k2),
-            [(k1, 3), (k2, 2)] => HandType::FullHouse(k1, k2),
-            [(k1, 3), (k2, 1), (k3, 1)] => HandType::ThreeOfAKind(k1, k2, k3),
-            [(k1, 2), (k2, 2), (k3, 1)] => HandType::TwoPairs(k1, k2, k3),
-            [(k1, 2), (k2, 1), (k3, 1), (k4, 1)] => HandType::OnePair(k1, k2, k3, k4),
-            [(k1, 1), (k2, 1), (k3, 1), (k4, 1), (k5, 1)] => HandType::HighCard(k1, k2, k3, k4, k5),
+            [(k, 5)] => HandType::FiveOfAKind,
+            [(k1, 4), (k2, 1)] => HandType::FourOfAKind,
+            [(k1, 3), (k2, 2)] => HandType::FullHouse,
+            [(k1, 3), (k2, 1), (k3, 1)] => HandType::ThreeOfAKind,
+            [(k1, 2), (k2, 2), (k3, 1)] => HandType::TwoPairs,
+            [(k1, 2), (k2, 1), (k3, 1), (k4, 1)] => HandType::OnePair,
+            [(k1, 1), (k2, 1), (k3, 1), (k4, 1), (k5, 1)] => HandType::HighCard,
             _ => panic!(),
         }
     }
 }
 
-impl Ord for HandType {
+impl Ord for Hand {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (HandType::FiveOfAKind(a), HandType::FiveOfAKind(b)) => a.cmp(b),
-            (HandType::FiveOfAKind(_), _) => Ordering::Greater,
-            (_, HandType::FiveOfAKind(_)) => Ordering::Less,
+        match (self.hand_type, other.hand_type) {
+            (HandType::FiveOfAKind, HandType::FiveOfAKind) => self.cards.cmp(&other.cards),
+            (HandType::FiveOfAKind, _) => Ordering::Greater,
+            (_, HandType::FiveOfAKind) => Ordering::Less,
 
-            (HandType::FourOfAKind(a1, a2), HandType::FourOfAKind(b1, b2)) => {
-                (a1, a2).cmp(&(b1, b2))
-            }
-            (HandType::FourOfAKind(_, _), _) => Ordering::Greater,
-            (_, HandType::FourOfAKind(_, _)) => Ordering::Less,
+            (HandType::FourOfAKind, HandType::FourOfAKind) => self.cards.cmp(&other.cards),
+            (HandType::FourOfAKind, _) => Ordering::Greater,
+            (_, HandType::FourOfAKind) => Ordering::Less,
 
-            (HandType::FullHouse(a1, a2), HandType::FullHouse(b1, b2)) => (a1, a2).cmp(&(b1, b2)),
-            (HandType::FullHouse(_, _), _) => Ordering::Greater,
-            (_, HandType::FullHouse(_, _)) => Ordering::Less,
+            (HandType::FullHouse, HandType::FullHouse) => self.cards.cmp(&other.cards),
+            (HandType::FullHouse, _) => Ordering::Greater,
+            (_, HandType::FullHouse) => Ordering::Less,
 
-            (HandType::ThreeOfAKind(a1, a2, a3), HandType::ThreeOfAKind(b1, b2, b3)) => {
-                (a1, a2, a3).cmp(&(b1, b2, b3))
-            }
-            (HandType::ThreeOfAKind(_, _, _), _) => Ordering::Greater,
-            (_, HandType::ThreeOfAKind(_, _, _)) => Ordering::Less,
+            (HandType::ThreeOfAKind, HandType::ThreeOfAKind) => self.cards.cmp(&other.cards),
+            (HandType::ThreeOfAKind, _) => Ordering::Greater,
+            (_, HandType::ThreeOfAKind) => Ordering::Less,
 
-            (HandType::TwoPairs(a1, a2, a3), HandType::TwoPairs(b1, b2, b3)) => {
-                (a1, a2, a3).cmp(&(b1, b2, b3))
-            }
-            (HandType::TwoPairs(_, _, _), _) => Ordering::Greater,
-            (_, HandType::TwoPairs(_, _, _)) => Ordering::Less,
+            (HandType::TwoPairs, HandType::TwoPairs) => self.cards.cmp(&other.cards),
+            (HandType::TwoPairs, _) => Ordering::Greater,
+            (_, HandType::TwoPairs) => Ordering::Less,
 
-            (HandType::OnePair(a1, a2, a3, a4), HandType::OnePair(b1, b2, b3, b4)) => {
-                (a1, a2, a3, a4).cmp(&(b1, b2, b3, b4))
-            }
-            (HandType::OnePair(_, _, _, _), _) => Ordering::Greater,
-            (_, HandType::OnePair(_, _, _, _)) => Ordering::Less,
+            (HandType::OnePair, HandType::OnePair) => self.cards.cmp(&other.cards),
+            (HandType::OnePair, _) => Ordering::Greater,
+            (_, HandType::OnePair) => Ordering::Less,
 
-            (HandType::HighCard(a1, a2, a3, a4, a5), HandType::HighCard(b1, b2, b3, b4, b5)) => {
-                (a1, a2, a3, a4, a5).cmp(&(b1, b2, b3, b4, b5))
-            }
+            (HandType::HighCard, HandType::HighCard) => self.cards.cmp(&other.cards),
         }
     }
 }
 
-impl PartialOrd for HandType {
+impl PartialOrd for Hand {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for HandType {
+impl PartialEq for Hand {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (HandType::FiveOfAKind(a), HandType::FiveOfAKind(b)) => a == b,
-            (HandType::FourOfAKind(a1, a2), HandType::FourOfAKind(b1, b2)) => a1 == b1 && a2 == b2,
-            (HandType::FullHouse(a1, a2), HandType::FullHouse(b1, b2)) => a1 == b1 && a2 == b2,
-            (HandType::ThreeOfAKind(a1, a2, a3), HandType::ThreeOfAKind(b1, b2, b3)) => {
-                a1 == b1 && a2 == b2 && a3 == b3
-            }
-            (HandType::TwoPairs(a1, a2, a3), HandType::TwoPairs(b1, b2, b3)) => {
-                a1 == b1 && a2 == b2 && a3 == b3
-            }
-            (HandType::OnePair(a1, a2, a3, a4), HandType::OnePair(b1, b2, b3, b4)) => {
-                a1 == b1 && a2 == b2 && a3 == b3 && a4 == b4
-            }
-            (HandType::HighCard(a1, a2, a3, a4, a5), HandType::HighCard(b1, b2, b3, b4, b5)) => {
-                a1 == b1 && a2 == b2 && a3 == b3 && a4 == b4 && a5 == b5
-            }
+        match (self.hand_type, other.hand_type) {
+            (HandType::FiveOfAKind, HandType::FiveOfAKind) => self.cards.eq(&other.cards),
+            (HandType::FourOfAKind, HandType::FourOfAKind) => self.cards.eq(&other.cards),
+            (HandType::FullHouse, HandType::FullHouse) => self.cards.eq(&other.cards),
+            (HandType::ThreeOfAKind, HandType::ThreeOfAKind) => self.cards.eq(&other.cards),
+            (HandType::TwoPairs, HandType::TwoPairs) => self.cards.eq(&other.cards),
+            (HandType::OnePair, HandType::OnePair) => self.cards.eq(&other.cards),
+            (HandType::HighCard, HandType::HighCard) => self.cards.eq(&other.cards),
             _ => false,
         }
     }
 }
 
-impl Eq for HandType {}
+impl Eq for Hand {}
 
 fn main() {
     let mut args = env::args();
@@ -144,7 +143,7 @@ fn main() {
 
     for line in input.lines() {
         let mut line = line.split(' ');
-        let cards = HandType::new(line.next().expect("Expected cards before the first space."));
+        let cards = Hand::new(line.next().expect("Expected cards before the first space."));
         println!("{cards:?}");
         let bid: usize = line
             .next()
@@ -155,7 +154,7 @@ fn main() {
         hands.push((cards, bid));
     }
 
-    hands.sort_by_key(|e| e.0);
+    hands.sort_by_cached_key(|e| e.0.clone());
 
     let part_1_result: usize = hands.iter().enumerate().map(|(i, e)| (i + 1) * e.1).sum();
 
