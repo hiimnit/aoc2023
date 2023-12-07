@@ -20,11 +20,11 @@ enum HandType {
 }
 
 impl Hand {
-    fn new(cards: &str) -> Self {
+    fn new(cards: &str, card_order: [char; 13], use_jokers: bool) -> Self {
         let converted_cards = cards
             .chars()
             .map(|e| {
-                CARDS
+                card_order
                     .iter()
                     .position(|c| *c == e)
                     .expect(&format!("Unexpected card {e}"))
@@ -32,20 +32,22 @@ impl Hand {
             .collect();
 
         Self {
-            hand_type: HandType::new(&converted_cards),
+            hand_type: HandType::new(&converted_cards, use_jokers),
             cards: converted_cards,
         }
     }
 }
 
-const CARDS: [char; 13] = [
-    // 'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
-    // '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A',
+const PART_1_CARD_ORDER: [char; 13] = [
+    '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A',
+];
+
+const PART_2_CARD_ORDER: [char; 13] = [
     'J', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'Q', 'K', 'A',
 ];
 
 impl HandType {
-    fn new(cards: &Vec<usize>) -> Self {
+    fn new(cards: &Vec<usize>, use_jokers: bool) -> Self {
         let mut groups: Vec<_> = cards
             .iter()
             .sorted()
@@ -60,8 +62,6 @@ impl HandType {
             Ordering::Greater => Ordering::Less,
         });
 
-        println!("{groups:?}");
-
         let hand_type = match groups[..] {
             [(_, 5)] => HandType::FiveOfAKind,
             [(_, 4), (_, 1)] => HandType::FourOfAKind,
@@ -72,6 +72,10 @@ impl HandType {
             [(_, 1), (_, 1), (_, 1), (_, 1), (_, 1)] => HandType::HighCard,
             _ => panic!(),
         };
+
+        if !use_jokers {
+            return hand_type;
+        }
 
         if let Some((_, joker_count)) = groups.iter().find(|e| *e.0 == 0) {
             return match (hand_type, joker_count) {
@@ -98,31 +102,31 @@ impl HandType {
 impl Ord for Hand {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self.hand_type, other.hand_type) {
-            (HandType::FiveOfAKind, HandType::FiveOfAKind) => self.cards.cmp(&other.cards),
+            (HandType::FiveOfAKind, HandType::FiveOfAKind)
+            | (HandType::FourOfAKind, HandType::FourOfAKind)
+            | (HandType::FullHouse, HandType::FullHouse)
+            | (HandType::ThreeOfAKind, HandType::ThreeOfAKind)
+            | (HandType::TwoPairs, HandType::TwoPairs)
+            | (HandType::OnePair, HandType::OnePair)
+            | (HandType::HighCard, HandType::HighCard) => self.cards.cmp(&other.cards),
+
             (HandType::FiveOfAKind, _) => Ordering::Greater,
             (_, HandType::FiveOfAKind) => Ordering::Less,
 
-            (HandType::FourOfAKind, HandType::FourOfAKind) => self.cards.cmp(&other.cards),
             (HandType::FourOfAKind, _) => Ordering::Greater,
             (_, HandType::FourOfAKind) => Ordering::Less,
 
-            (HandType::FullHouse, HandType::FullHouse) => self.cards.cmp(&other.cards),
             (HandType::FullHouse, _) => Ordering::Greater,
             (_, HandType::FullHouse) => Ordering::Less,
 
-            (HandType::ThreeOfAKind, HandType::ThreeOfAKind) => self.cards.cmp(&other.cards),
             (HandType::ThreeOfAKind, _) => Ordering::Greater,
             (_, HandType::ThreeOfAKind) => Ordering::Less,
 
-            (HandType::TwoPairs, HandType::TwoPairs) => self.cards.cmp(&other.cards),
             (HandType::TwoPairs, _) => Ordering::Greater,
             (_, HandType::TwoPairs) => Ordering::Less,
 
-            (HandType::OnePair, HandType::OnePair) => self.cards.cmp(&other.cards),
             (HandType::OnePair, _) => Ordering::Greater,
             (_, HandType::OnePair) => Ordering::Less,
-
-            (HandType::HighCard, HandType::HighCard) => self.cards.cmp(&other.cards),
         }
     }
 }
@@ -160,12 +164,25 @@ fn main() {
     let input = fs::read_to_string(&input_file_path)
         .expect(&format!("Could not open input file {input_file_path}"));
 
+    let part_1_result: usize = solve(&input, PART_1_CARD_ORDER, false);
+
+    println!("Part 1 result {part_1_result}");
+
+    let part_2_result: usize = solve(&input, PART_2_CARD_ORDER, true);
+
+    println!("Part 2 result {part_2_result}");
+}
+
+fn solve(input: &str, card_order: [char; 13], use_jokers: bool) -> usize {
     let mut hands = vec![];
 
     for line in input.lines() {
         let mut line = line.split(' ');
-        let cards = Hand::new(line.next().expect("Expected cards before the first space."));
-        println!("{cards:?}");
+        let cards = Hand::new(
+            line.next().expect("Expected cards before the first space."),
+            card_order,
+            use_jokers,
+        );
         let bid: usize = line
             .next()
             .expect("Expected bid after the first space.")
@@ -177,11 +194,5 @@ fn main() {
 
     hands.sort_by_cached_key(|e| e.0.clone());
 
-    let part_1_result: usize = hands.iter().enumerate().map(|(i, e)| (i + 1) * e.1).sum();
-
-    for hand in hands {
-        println!("{hand:?}");
-    }
-
-    println!("Part 1 result {part_1_result}");
+    hands.iter().enumerate().map(|(i, e)| (i + 1) * e.1).sum()
 }
