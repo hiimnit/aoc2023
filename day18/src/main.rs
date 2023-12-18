@@ -1,4 +1,4 @@
-use std::{env, fmt::Write, fs, vec};
+use std::{collections::HashMap, env, fs, thread::panicking, vec};
 
 fn main() {
     let mut args = env::args();
@@ -21,9 +21,9 @@ fn main() {
         })
         .collect();
 
-    let mut map: Vec<Vec<Node>> = vec![vec![Node::Filled]];
-    let (mut current_row, mut current_col) = (0usize, 0usize);
-    let (mut rows, mut cols) = (1usize, 1usize);
+    let (mut current_row, mut current_col) = (0, 0);
+
+    let mut range_map: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
 
     for Instruction {
         direction,
@@ -31,156 +31,120 @@ fn main() {
         color: _,
     } in &instructions
     {
-        (current_row, current_col) = match direction {
+        match direction {
             Direction::Up => {
-                if *steps > current_row {
-                    expand_up(&mut map, steps - current_row);
-                    rows += steps - current_row;
-                    current_row = *steps;
-                }
-
-                for i in current_row - steps..=current_row {
-                    map[i][current_col] = Node::Filled;
-                }
-
-                (current_row - steps, current_col)
+                current_row -= steps;
             }
             Direction::Right => {
-                if current_col + steps >= cols {
-                    expand_right(&mut map, current_col + steps - cols + 1);
-                    cols = current_col + steps + 1;
+                let range = (current_col, current_col + steps);
+                if let Some(ranges) = range_map.get_mut(&current_row) {
+                    ranges.push(range);
+                } else {
+                    range_map.insert(current_row, vec![range]);
                 }
-
-                for i in current_col + 1..=current_col + steps {
-                    map[current_row][i] = Node::Filled;
-                }
-
-                (current_row, current_col + steps)
+                current_col += steps;
             }
             Direction::Down => {
-                if current_row + steps >= rows {
-                    expand_down(&mut map, current_row + steps - rows + 1);
-                    rows = current_row + steps + 1;
-                }
-
-                for i in current_row..=current_row + steps {
-                    map[i][current_col] = Node::Filled;
-                }
-
-                (current_row + steps, current_col)
+                current_row += steps;
             }
             Direction::Left => {
-                if *steps > current_col {
-                    expand_left(&mut map, steps - current_col);
-                    cols += steps - current_col;
-                    current_col = *steps;
+                let range = (current_col - steps, current_col);
+                if let Some(ranges) = range_map.get_mut(&current_row) {
+                    ranges.push(range);
+                } else {
+                    range_map.insert(current_row, vec![range]);
                 }
-
-                for i in current_col - steps..current_col {
-                    map[current_row][i] = Node::Filled;
-                }
-
-                (current_row, current_col - steps)
+                current_col -= steps;
             }
-        };
+        }
     }
 
-    // TODO store rows of ranges
-    // TODO process by blocks - expand/contract ranges
+    let mut rows: Vec<_> = range_map.keys().collect();
+    rows.sort();
 
-    let mut part_1_result = fill(&mut map);
+    let mut open_ranges: Vec<(i32, i32)> = vec![];
+    let mut last_row = 0;
+    let mut part_1_result = 0;
 
-    for line in &map {
-        for node in line {
-            print!("{node}");
+    for row in rows {
+        let mut ranges = range_map[row].clone();
+
+        ranges.sort();
+
+        if open_ranges.is_empty() {
+            open_ranges.extend(ranges);
+            last_row = *row;
+            continue;
         }
-        println!();
+
+        for (start, end) in &open_ranges {
+            part_1_result += ((end - start).abs() + 1) * (row - last_row).abs();
+        }
+
+        let mut next_open_ranges = vec![];
+
+        while !ranges.is_empty() && !open_ranges.is_empty() {
+            let first_range = ranges[0];
+            let first_open_range = open_ranges[0];
+
+            if first_range.1 < first_open_range.0 {
+                ranges.remove(0);
+                next_open_ranges.push(first_range);
+            } else if first_range.1 == first_open_range.0 {
+                ranges.remove(0);
+                open_ranges[0] = (first_range.0, first_open_range.1);
+            } else if first_range.0 == first_open_range.0 {
+                ranges.remove(0);
+                part_1_result += (first_range.1 - first_range.0).abs();
+
+                if first_range.1 == first_open_range.1 {
+                    part_1_result += 1;
+                    open_ranges.remove(0);
+                } else {
+                    open_ranges[0] = (first_range.1, first_open_range.1);
+                }
+            } else if first_range.1 == first_open_range.1 {
+                ranges.remove(0);
+                part_1_result += (first_range.1 - first_range.0).abs();
+
+                if first_range.0 == first_open_range.0 {
+                    part_1_result += 1;
+                    open_ranges.remove(0);
+                } else {
+                    open_ranges[0] = (first_open_range.0, first_range.0);
+                }
+            } else if first_open_range.1 == first_range.0 {
+                open_ranges.remove(0);
+                ranges[0] = (first_open_range.0, first_range.1);
+            } else if first_open_range.1 < first_range.0 {
+                open_ranges.remove(0);
+                next_open_ranges.push(first_open_range);
+            } else if first_open_range.0 < first_range.0 && first_open_range.1 > first_range.1 {
+                ranges.remove(0);
+
+                next_open_ranges.push((first_open_range.0, first_range.0));
+                part_1_result += (first_range.1 - first_range.0).abs() - 1;
+
+                open_ranges[0] = (first_range.1, first_open_range.1);
+            } else {
+                panic!();
+            }
+        }
+
+        next_open_ranges.extend(ranges);
+        next_open_ranges.extend(open_ranges);
+
+        open_ranges = next_open_ranges;
+        last_row = *row;
     }
 
     println!("Part 1 result {part_1_result}");
 }
 
-fn fill(map: &mut Vec<Vec<Node>>) -> usize {
-    expand_up(map, 1);
-    expand_right(map, 1);
-    expand_down(map, 1);
-    expand_left(map, 1);
-
-    let border = count_filled(&map);
-
-    let mut queue = vec![(0, 0)];
-
-    while let Some(position) = queue.pop() {
-        if map[position.0][position.1] == Node::Filled {
-            continue;
-        }
-
-        map[position.0][position.1] = Node::Filled;
-        if position.0 > 0 {
-            queue.push((position.0 - 1, position.1));
-        }
-        if position.1 > 0 {
-            queue.push((position.0, position.1 - 1));
-        }
-        if position.0 + 1 < map.len() {
-            queue.push((position.0 + 1, position.1));
-        }
-        if position.1 + 1 < map[0].len() {
-            queue.push((position.0, position.1 + 1));
-        }
-    }
-
-    (map.len() * map[0].len()) - count_filled(map) + border
-}
-
-fn count_filled(map: &Vec<Vec<Node>>) -> usize {
-    map.iter()
-        .map(|line| line.iter().filter(|&e| *e == Node::Filled).count())
-        .sum()
-}
-
-fn expand_up(map: &mut Vec<Vec<Node>>, rows: usize) {
-    let cols = map.get(0).map(|e| e.len()).unwrap_or(0);
-
-    for _ in 0..rows {
-        map.insert(0, vec![Node::Empty; cols]);
-    }
-}
-
-fn expand_right(map: &mut Vec<Vec<Node>>, cols: usize) {
-    if map.is_empty() {
-        return;
-    }
-
-    for line in map {
-        line.extend([Node::Empty].repeat(cols));
-    }
-}
-
-fn expand_down(map: &mut Vec<Vec<Node>>, rows: usize) {
-    let cols = map.get(0).map(|e| e.len()).unwrap_or(0);
-
-    for _ in 0..rows {
-        map.push(vec![Node::Empty; cols]);
-    }
-}
-
-fn expand_left(map: &mut Vec<Vec<Node>>, cols: usize) {
-    if map.is_empty() {
-        return;
-    }
-
-    for i in 0..map.len() {
-        let mut extended_line = vec![Node::Empty; cols];
-        extended_line.append(&mut map[i]);
-        map[i] = extended_line;
-    }
-}
-
 #[derive(Debug)]
 struct Instruction {
     direction: Direction,
-    steps: usize,
+    steps: i32,
     color: String,
 }
 
@@ -190,7 +154,7 @@ impl Instruction {
             direction: direction.into(),
             steps: steps
                 .parse()
-                .expect(&format!("Steps {steps} must be a valid usize")),
+                .expect(&format!("Steps {steps} must be a valid i32")),
             color: color.into(),
         }
     }
@@ -213,23 +177,5 @@ impl From<&str> for Direction {
             "L" => Direction::Left,
             _ => panic!("Unexpected direction {value}"),
         }
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-enum Node {
-    // Vertical,
-    Filled,
-    #[default]
-    Empty,
-}
-
-impl std::fmt::Display for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_char(match self {
-            // Node::Vertical => '|',
-            Node::Filled => '#',
-            Node::Empty => '.',
-        })
     }
 }
