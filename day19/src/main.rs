@@ -30,6 +30,15 @@ fn main() {
     }
 
     println!("Part 1 result {part_1_result}");
+
+    let part_2_result = workflows.evaluate_part_range(&PartRange {
+        x_rating: (1, 4000),
+        m_rating: (1, 4000),
+        a_rating: (1, 4000),
+        s_rating: (1, 4000),
+    });
+
+    println!("Part 2 result {part_2_result}");
 }
 
 #[derive(Debug)]
@@ -38,6 +47,14 @@ struct Part {
     m_rating: usize,
     a_rating: usize,
     s_rating: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PartRange {
+    x_rating: (usize, usize),
+    m_rating: (usize, usize),
+    a_rating: (usize, usize),
+    s_rating: (usize, usize),
 }
 
 impl From<&str> for Part {
@@ -75,7 +92,12 @@ impl From<&str> for Part {
 
         assert!(lexer.next() == Some(Token::Operator('}')));
 
-        Self { x_rating, m_rating, a_rating, s_rating }
+        Self {
+            x_rating,
+            m_rating,
+            a_rating,
+            s_rating,
+        }
     }
 }
 
@@ -85,9 +107,89 @@ impl Part {
     }
 }
 
+impl PartRange {
+    fn split(
+        &self,
+        category: &Category,
+        condition: &Condition,
+        threshold: &usize,
+    ) -> (Option<PartRange>, Option<PartRange>) {
+        let rating = match category {
+            Category::X => self.x_rating,
+            Category::M => self.m_rating,
+            Category::A => self.a_rating,
+            Category::S => self.s_rating,
+        };
+
+        let (truthy, falsy): (Option<(usize, usize)>, Option<(usize, usize)>) = match condition {
+            Condition::LessThan => {
+                if rating.1 < *threshold {
+                    (Some(rating), None)
+                } else if rating.0 < *threshold {
+                    (
+                        Some((rating.0, threshold - 1)),
+                        Some((*threshold, rating.1)),
+                    )
+                } else {
+                    (None, Some(rating))
+                }
+            }
+            Condition::GreaterThan => {
+                if rating.0 > *threshold {
+                    (Some(rating), None)
+                } else if rating.1 > *threshold {
+                    (
+                        Some((threshold + 1, rating.1)),
+                        Some((rating.0, *threshold)),
+                    )
+                } else {
+                    (None, Some(rating))
+                }
+            }
+        };
+
+        (
+            truthy.map(|range| self.copy_with(category, range)),
+            falsy.map(|range| self.copy_with(category, range)),
+        )
+    }
+
+    fn copy_with(&self, category: &Category, range: (usize, usize)) -> Self {
+        Self {
+            x_rating: if *category == Category::X {
+                range
+            } else {
+                self.x_rating
+            },
+            m_rating: if *category == Category::M {
+                range
+            } else {
+                self.m_rating
+            },
+            a_rating: if *category == Category::A {
+                range
+            } else {
+                self.a_rating
+            },
+            s_rating: if *category == Category::S {
+                range
+            } else {
+                self.s_rating
+            },
+        }
+    }
+
+    fn product(&self) -> usize {
+        (self.x_rating.1 - self.x_rating.0 + 1)
+            * (self.m_rating.1 - self.m_rating.0 + 1)
+            * (self.a_rating.1 - self.a_rating.0 + 1)
+            * (self.s_rating.1 - self.s_rating.0 + 1)
+    }
+}
+
 #[derive(Debug)]
 struct Workflows {
-    workflows: HashMap<String, Workflow>,
+    workflows: HashMap<String, Rule>,
 }
 
 impl Workflows {
@@ -106,22 +208,20 @@ impl Workflows {
             let rule = parse_rule(&mut lexer);
 
             assert!(lexer.next() == Some(Token::Operator('}')));
-            
-            workflows.insert(workflow_name, Workflow { first_rule: rule });
+
+            workflows.insert(workflow_name, rule);
         }
 
-        Self {
-            workflows,
-        }
+        Self { workflows }
     }
 
     fn evaluate_part(&self, part: &Part) -> bool {
-        let mut workflow = &self.workflows["in"];
+        let mut rule = &self.workflows["in"];
 
         loop {
-            match workflow.evaluate_part(part) {
+            match rule.evaluate_part(part) {
                 Rule::GoToWorkflow(next_workflow) => {
-                    workflow = &self.workflows[next_workflow];
+                    rule = &self.workflows[next_workflow];
                 }
                 Rule::Comparison(_) => panic!("Unexpected return value - Comparison"),
                 Rule::Accepted => return true,
@@ -129,19 +229,24 @@ impl Workflows {
             }
         }
     }
-}
 
-#[derive(Debug)]
-struct Workflow {
-    first_rule: Rule,
-}
+    fn evaluate_part_range(&self, part_range: &PartRange) -> usize {
+        let mut result = 0;
+        let mut queue = vec![EvaluatePartResult::GoToWorkflow("in".into(), *part_range)];
 
-impl Workflow {
-    fn evaluate_part(&self, part: &Part) -> &Rule {
-        match &self.first_rule {
-            Rule::Comparison(comparison) => comparison.evaluate_part(part),
-            rule => rule,
+        while let Some(work) = queue.pop() {
+            match work {
+                EvaluatePartResult::Accepted(range) => {
+                    result += range.product();
+                }
+                EvaluatePartResult::GoToWorkflow(workflow_name, part_range) => {
+                    let rule = &self.workflows[workflow_name.as_str()];
+                    queue.append(&mut rule.evaluate_part_range(&part_range));
+                }
+            }
         }
+
+        result
     }
 }
 
@@ -186,7 +291,7 @@ fn parse_rule(lexer: &mut Lexer) -> Rule {
         _ => return Rule::GoToWorkflow(identifier),
     };
 
-    let Some(Token::Number(threshold)) = lexer.next() else { 
+    let Some(Token::Number(threshold)) = lexer.next() else {
         panic!("Expected a number after a condition");
     };
 
@@ -322,12 +427,40 @@ impl Comparison {
             Condition::GreaterThan => rating > *threshold,
         };
 
-        let result = if result { when_true.as_ref() } else { when_false.as_ref() };
+        let result = if result {
+            when_true.as_ref()
+        } else {
+            when_false.as_ref()
+        };
 
         match result {
             Rule::Comparison(rule) => rule.evaluate_part(part),
             result => result,
         }
+    }
+
+    fn evaluate_part_range(&self, part_range: &PartRange) -> Vec<EvaluatePartResult> {
+        let Comparison {
+            category,
+            condition,
+            threshold,
+            when_true,
+            when_false,
+        } = &self;
+
+        let (truthy, falsy) = part_range.split(category, condition, threshold);
+
+        let mut results = vec![];
+
+        if let Some(range) = truthy {
+            results.extend(when_true.as_ref().evaluate_part_range(&range));
+        }
+
+        if let Some(range) = falsy {
+            results.extend(when_false.as_ref().evaluate_part_range(&range));
+        }
+
+        results
     }
 }
 
@@ -337,7 +470,7 @@ enum Condition {
     GreaterThan,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Category {
     X,
     M,
@@ -363,4 +496,41 @@ enum Rule {
     Comparison(Comparison),
     Accepted,
     Rejected,
+}
+
+#[derive(Debug)]
+enum EvaluatePartResult {
+    Accepted(PartRange),
+    GoToWorkflow(String, PartRange),
+}
+
+impl Rule {
+    fn evaluate_part(&self, part: &Part) -> &Rule {
+        match &self {
+            Rule::Comparison(comparison) => comparison.evaluate_part(part),
+            rule => rule,
+        }
+    }
+
+    fn evaluate_part_range(&self, part_range: &PartRange) -> Vec<EvaluatePartResult> {
+        let mut results = vec![];
+
+        match &self {
+            Rule::GoToWorkflow(workflow) => {
+                results.push(EvaluatePartResult::GoToWorkflow(
+                    workflow.clone(),
+                    *part_range,
+                ));
+            }
+            Rule::Comparison(comparison) => {
+                results.extend(comparison.evaluate_part_range(part_range));
+            }
+            Rule::Accepted => {
+                results.push(EvaluatePartResult::Accepted(*part_range));
+            }
+            Rule::Rejected => {}
+        }
+
+        results
+    }
 }
